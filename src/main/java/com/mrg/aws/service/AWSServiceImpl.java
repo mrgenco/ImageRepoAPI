@@ -1,5 +1,6 @@
 package com.mrg.aws.service;
 
+import com.mrg.aws.util.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -9,10 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
-import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
-import software.amazon.awssdk.services.dynamodb.model.DynamoDbException;
-import software.amazon.awssdk.services.dynamodb.model.PutItemRequest;
-import software.amazon.awssdk.services.dynamodb.model.ResourceNotFoundException;
+import software.amazon.awssdk.services.dynamodb.model.*;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
@@ -26,79 +24,86 @@ import java.util.HashMap;
 public class AWSServiceImpl implements AWSService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AWSServiceImpl.class);
-
-    @Autowired
     private S3Client amazonS3;
-
-    @Autowired
     private DynamoDbClient amazonDynamoDB;
 
     @Value("${aws.s3.bucket}")
     private String bucketName;
+    @Value("${aws.dynamodb.tablename}")
+    private String tableName;
+
+    @Autowired
+    AWSServiceImpl(S3Client amazonS3, DynamoDbClient amazonDynamoDB){
+        this.amazonS3 = amazonS3;
+        this.amazonDynamoDB = amazonDynamoDB;
+    }
 
     @Override
-    // @Async annotation ensures that the method is executed in a different background thread
-    // but not consume the main thread.
     @Async
     public void uploadFile(final MultipartFile multipartFile, final String description) throws Exception {
         LOGGER.info("File upload in progress.");
-        try {
-            final File file = convertMultiPartFileToFile(multipartFile);
-            uploadFileToS3Bucket(bucketName, file);
-            LOGGER.info("File upload is completed.");
-            updateDynamoDBTable(multipartFile.getOriginalFilename(), multipartFile.getSize(), description);
-            LOGGER.info("DynamoDB table is updated.");
-            file.delete();    // To remove the file locally created in the project folder.
-        } catch (Exception ex) {
-            LOGGER.info("File upload is failed.");
-            LOGGER.error("Error= {} while uploading file.", ex.getMessage());
-            throw ex;
-        }
+        // Unique File ID for S3 and DynamoDB records
+        final String uniqueFileId = LocalDateTime.now() + "_" + multipartFile.getOriginalFilename();
+        // DynamoDB operation
+        addFileToDynamoDBTable(uniqueFileId, multipartFile, description);
+        // S3 operation
+        uploadFileToS3Bucket(uniqueFileId, multipartFile, bucketName);
     }
 
-    private void updateDynamoDBTable(String originalFilename, long size, String description) {
-        HashMap<String, AttributeValue> itemValues = new HashMap<String, AttributeValue>();
-        // Add all content to the table
-        itemValues.put("fileName", AttributeValue.builder().s(originalFilename).build());
-        itemValues.put("size", AttributeValue.builder().s(String.valueOf(size)).build());
-        itemValues.put("description", AttributeValue.builder().s(description).build());
-        // Create a PutItemRequest object
-        PutItemRequest request = PutItemRequest.builder()
-                .tableName("mrgtable")
-                .item(itemValues)
-                .build();
+    private void addFileToDynamoDBTable(String uniqueId, MultipartFile multipartFile, String description) {
         try {
+            LOGGER.info("Adding DynamoDB record with name= " + uniqueId);
+            HashMap<String, AttributeValue> itemValues = new HashMap<String, AttributeValue>();
+            itemValues.put("id", AttributeValue.builder().s(uniqueId).build());
+            itemValues.put("fileName", AttributeValue.builder().s(multipartFile.getOriginalFilename()).build());
+            itemValues.put("fileType", AttributeValue.builder().s(multipartFile.getContentType()).build());
+            itemValues.put("size", AttributeValue.builder().s(String.valueOf(multipartFile.getSize())).build());
+            itemValues.put("description", AttributeValue.builder().s(description).build());
+            PutItemRequest request = PutItemRequest.builder()
+                    .tableName(tableName)
+                    .item(itemValues)
+                    .build();
             amazonDynamoDB.putItem(request);
-            System.out.println("mrgtable" + " was successfully updated");
-        } catch (ResourceNotFoundException e) {
-            System.err.format("Error: The table \"%s\" can't be found.\n", "mrgtable");
-            System.err.println("Be sure that it exists and that you've typed its name correctly!");
-            System.exit(1);
-        } catch (DynamoDbException e) {
-            System.err.println(e.getMessage());
-            System.exit(1);
-        }
-    }
-
-    private File convertMultiPartFileToFile(final MultipartFile multipartFile) throws Exception {
-        final File file = new File(multipartFile.getOriginalFilename());
-
-        try (final FileOutputStream outputStream = new FileOutputStream(file)) {
-            outputStream.write(multipartFile.getBytes());
-        } catch (final IOException ex) {
-            LOGGER.error("Error converting the multi-part file to file= ", ex.getMessage());
+            LOGGER.info("File upload DynamoDB is completed.");
+        } catch (Exception ex) {
+            LOGGER.error("Error= {} while adding new file to DynamoDB.", ex.getMessage());
             throw ex;
         }
-        return file;
     }
 
-    private void uploadFileToS3Bucket(final String bucketName, final File file) {
-        final String uniqueFileName = LocalDateTime.now() + "_" + file.getName();
-        LOGGER.info("Uploading file with name= " + uniqueFileName);
-        PutObjectRequest objectRequest = PutObjectRequest.builder()
-                .bucket(bucketName)
-                .key(uniqueFileName)
-                .build();
-        amazonS3.putObject(objectRequest, RequestBody.fromFile(file));
+    private void uploadFileToS3Bucket(final String uniqueFileId, final MultipartFile multipartFile,  final String bucketName) throws Exception {
+        try {
+            final File file = FileUtils.convertMultiPartFileToFile(multipartFile);
+            LOGGER.info("Uploading file with name= " + uniqueFileId);
+            PutObjectRequest objectRequest = PutObjectRequest.builder()
+                    .bucket(bucketName)
+                    .key(uniqueFileId)
+                    .build();
+            amazonS3.putObject(objectRequest, RequestBody.fromFile(file));
+            LOGGER.info("File upload S3 is completed.");
+            file.delete();
+        }catch (Exception ex) {
+            LOGGER.error("Error= {} while uploading file to S3.", ex.getMessage());
+            // Rollback operation
+            rollBackFromDynamoDBTable(uniqueFileId);
+            throw ex;
+        }
+    }
+
+    private void rollBackFromDynamoDBTable(String uniqueFileId) {
+        try {
+            LOGGER.info("Rollback started for DynamoDB record.");
+            HashMap<String, AttributeValue> keyToGet = new HashMap<String, AttributeValue>();
+            keyToGet.put("id", AttributeValue.builder()
+                    .s(uniqueFileId)
+                    .build());
+            DeleteItemRequest deleteReq = DeleteItemRequest.builder()
+                    .tableName(tableName)
+                    .key(keyToGet)
+                    .build();
+            amazonDynamoDB.deleteItem(deleteReq);
+        } catch (Exception ex) {
+            LOGGER.error("Rollback operation failed. Error = {}", ex.getMessage());
+        }
     }
 }
