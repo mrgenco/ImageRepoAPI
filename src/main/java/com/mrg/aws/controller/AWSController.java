@@ -18,9 +18,9 @@ public class AWSController {
     private AWSService service;
 
     @PostMapping(value= "/upload")
-    public ResponseEntity<String> uploadFile(@RequestPart(value= "file") final MultipartFile multipartFile) {
+    public ResponseEntity<String> uploadFile(@RequestPart(value= "file") final MultipartFile multipartFile, @RequestPart(value= "description") final String description) {
         try{
-            service.uploadFile(multipartFile);
+            service.uploadFile(multipartFile, description);
             final String response = "[" + multipartFile.getOriginalFilename() + "] uploaded successfully.";
             return new ResponseEntity<>(response, HttpStatus.OK);
         }catch(Exception ex){

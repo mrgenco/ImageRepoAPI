@@ -21,12 +21,10 @@ public class AWSClientConfig {
     private String region;
     private AwsCredentials credentials;
 
-    public AWSClientConfig(){
-        credentials = AwsBasicCredentials.create(accessKeyId, secretAccessKey);
-    }
 
     @Bean
     public S3Client getAmazonS3Cient() {
+        AwsCredentials credentials = AwsBasicCredentials.create(accessKeyId, secretAccessKey);
         return S3Client.builder()
                 .region(Region.of(region))
                 .credentialsProvider(StaticCredentialsProvider.create(credentials))
@@ -36,6 +34,7 @@ public class AWSClientConfig {
 
     @Bean
     public DynamoDbClient getDynamoDbClient(){
+        AwsCredentials credentials = AwsBasicCredentials.create(accessKeyId, secretAccessKey);
         return DynamoDbClient.builder()
                 .region(Region.of(region))
                 .credentialsProvider(StaticCredentialsProvider.create(credentials))
