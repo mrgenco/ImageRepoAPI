@@ -13,7 +13,7 @@ public class FileUtils {
         try (final FileOutputStream outputStream = new FileOutputStream(file)) {
             outputStream.write(multipartFile.getBytes());
         } catch (final IOException ex) {
-            System.out.println("IO exception occured");
+            System.out.println("IO exception occurred");
             throw ex;
         }
         return file;

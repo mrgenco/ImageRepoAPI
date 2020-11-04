@@ -13,10 +13,7 @@ import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.*;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-
 import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 
@@ -24,30 +21,30 @@ import java.util.HashMap;
 public class AWSServiceImpl implements AWSService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AWSServiceImpl.class);
-    private S3Client amazonS3;
-    private DynamoDbClient amazonDynamoDB;
-
     @Value("${aws.s3.bucket}")
     private String bucketName;
-    @Value("${aws.dynamodb.tablename}")
+    @Value("${aws.dynamodb.table}")
     private String tableName;
+    private S3Client s3Client;
+    private DynamoDbClient dynamoDbClient;
 
     @Autowired
-    AWSServiceImpl(S3Client amazonS3, DynamoDbClient amazonDynamoDB){
-        this.amazonS3 = amazonS3;
-        this.amazonDynamoDB = amazonDynamoDB;
+    public AWSServiceImpl(S3Client s3Client, DynamoDbClient dynamoDbClient){
+        this.s3Client = s3Client;
+        this.dynamoDbClient = dynamoDbClient;
     }
 
     @Override
     @Async
     public void uploadFile(final MultipartFile multipartFile, final String description) throws Exception {
         LOGGER.info("File upload in progress.");
-        // Unique File ID for S3 and DynamoDB records
+        // Primary key for S3 & DynamoDB records
         final String uniqueFileId = LocalDateTime.now() + "_" + multipartFile.getOriginalFilename();
         // DynamoDB operation
         addFileToDynamoDBTable(uniqueFileId, multipartFile, description);
         // S3 operation
         uploadFileToS3Bucket(uniqueFileId, multipartFile, bucketName);
+        LOGGER.info("File upload is completed successfully.");
     }
 
     private void addFileToDynamoDBTable(String uniqueId, MultipartFile multipartFile, String description) {
@@ -63,7 +60,7 @@ public class AWSServiceImpl implements AWSService {
                     .tableName(tableName)
                     .item(itemValues)
                     .build();
-            amazonDynamoDB.putItem(request);
+            dynamoDbClient.putItem(request);
             LOGGER.info("File upload DynamoDB is completed.");
         } catch (Exception ex) {
             LOGGER.error("Error= {} while adding new file to DynamoDB.", ex.getMessage());
@@ -79,7 +76,7 @@ public class AWSServiceImpl implements AWSService {
                     .bucket(bucketName)
                     .key(uniqueFileId)
                     .build();
-            amazonS3.putObject(objectRequest, RequestBody.fromFile(file));
+            s3Client.putObject(objectRequest, RequestBody.fromFile(file));
             LOGGER.info("File upload S3 is completed.");
             file.delete();
         }catch (Exception ex) {
@@ -101,7 +98,7 @@ public class AWSServiceImpl implements AWSService {
                     .tableName(tableName)
                     .key(keyToGet)
                     .build();
-            amazonDynamoDB.deleteItem(deleteReq);
+            dynamoDbClient.deleteItem(deleteReq);
         } catch (Exception ex) {
             LOGGER.error("Rollback operation failed. Error = {}", ex.getMessage());
         }

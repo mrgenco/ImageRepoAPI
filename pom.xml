@@ -43,7 +43,6 @@
 			<artifactId>dynamodb</artifactId>
 			<groupId>software.amazon.awssdk</groupId>
 		</dependency>
-
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-test</artifactId>
@@ -55,12 +54,9 @@
 				</exclusion>
 			</exclusions>
 		</dependency>
-
-
 	</dependencies>
 
 	<build>
-
 		<finalName>SpringBoot AWS Tutorial</finalName>
 		<plugins>
 			<plugin>
