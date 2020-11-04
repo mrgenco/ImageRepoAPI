@@ -70,8 +70,8 @@ public class AWSServiceImpl implements AWSService {
 
     private void uploadFileToS3Bucket(final String uniqueFileId, final MultipartFile multipartFile,  final String bucketName) throws Exception {
         try {
-            final File file = FileUtils.convertMultiPartFileToFile(multipartFile);
             LOGGER.info("Uploading file with name= " + uniqueFileId);
+            final File file = FileUtils.convertMultiPartFileToFile(multipartFile);
             PutObjectRequest objectRequest = PutObjectRequest.builder()
                     .bucket(bucketName)
                     .key(uniqueFileId)
@@ -81,12 +81,19 @@ public class AWSServiceImpl implements AWSService {
             file.delete();
         }catch (Exception ex) {
             LOGGER.error("Error= {} while uploading file to S3.", ex.getMessage());
-            // Rollback operation
+            // Rollback operation for logical data consistency
             rollBackFromDynamoDBTable(uniqueFileId);
             throw ex;
         }
     }
 
+    /*
+    * TR : S3 operasyonu başarısız olursa mantıksal veri bütünlüğünü korumak
+    *      adına ilgili DynamoDB kaydı silinmeli/geri alınmalı.
+    * -------------------------------------------------------------------------------
+    * EN : If S3 operation fails ensures the remaining DynamoDB record is rolled back
+    *      for logical data consistency.
+    * */
     private void rollBackFromDynamoDBTable(String uniqueFileId) {
         try {
             LOGGER.info("Rollback started for DynamoDB record.");
