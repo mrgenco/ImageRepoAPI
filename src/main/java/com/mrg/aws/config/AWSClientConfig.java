@@ -19,6 +19,8 @@ public class AWSClientConfig {
     private String secretAccessKey;
     @Value("${aws.s3.region}")
     private String region;
+
+    // TODO : use it as a singleton object in client beans
     private AwsCredentials credentials;
 
 
