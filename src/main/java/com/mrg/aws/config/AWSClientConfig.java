@@ -10,6 +10,8 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.s3.S3Client;
 
+import javax.annotation.PostConstruct;
+
 @Configuration
 public class AWSClientConfig {
 
@@ -20,23 +22,21 @@ public class AWSClientConfig {
     @Value("${aws.s3.region}")
     private String region;
 
-    // TODO : use it as a singleton object in client beans
     private AwsCredentials credentials;
 
-
+    @PostConstruct
+    public void createCredentials(){
+        credentials = AwsBasicCredentials.create(accessKeyId, secretAccessKey);
+    }
     @Bean
-    public S3Client getAmazonS3Cient() {
-        AwsCredentials credentials = AwsBasicCredentials.create(accessKeyId, secretAccessKey);
+    public S3Client getAmazonS3Client() {
         return S3Client.builder()
                 .region(Region.of(region))
                 .credentialsProvider(StaticCredentialsProvider.create(credentials))
                 .build();
-
     }
-
     @Bean
     public DynamoDbClient getDynamoDbClient(){
-        AwsCredentials credentials = AwsBasicCredentials.create(accessKeyId, secretAccessKey);
         return DynamoDbClient.builder()
                 .region(Region.of(region))
                 .credentialsProvider(StaticCredentialsProvider.create(credentials))
