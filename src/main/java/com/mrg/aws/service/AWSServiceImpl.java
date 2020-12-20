@@ -43,7 +43,7 @@ public class AWSServiceImpl implements AWSService {
         // DynamoDB operation
         addFileToDynamoDBTable(uniqueFileId, multipartFile, description);
         // S3 operation
-        uploadFileToS3Bucket(uniqueFileId, multipartFile, bucketName);
+        uploadFileToS3Bucket(uniqueFileId, multipartFile);
         LOGGER.info("File upload is completed successfully.");
     }
 
@@ -60,15 +60,15 @@ public class AWSServiceImpl implements AWSService {
                     .tableName(tableName)
                     .item(itemValues)
                     .build();
-            dynamoDbClient.putItem(request);
-            LOGGER.info("File upload DynamoDB is completed.");
+            PutItemResponse response = dynamoDbClient.putItem(request);
+            LOGGER.info("File upload DynamoDB is completed. Response : " + response.sdkHttpResponse());
         } catch (Exception ex) {
             LOGGER.error("Error= {} while adding new file to DynamoDB.", ex.getMessage());
             throw ex;
         }
     }
 
-    private void uploadFileToS3Bucket(final String uniqueFileId, final MultipartFile multipartFile,  final String bucketName) throws Exception {
+    private void uploadFileToS3Bucket(final String uniqueFileId, final MultipartFile multipartFile) throws Exception {
         try {
             LOGGER.info("Uploading file with name= " + uniqueFileId);
             final File file = FileUtils.convertMultiPartFileToFile(multipartFile);
@@ -78,7 +78,7 @@ public class AWSServiceImpl implements AWSService {
                     .build();
             s3Client.putObject(objectRequest, RequestBody.fromFile(file));
             LOGGER.info("File upload S3 is completed.");
-            file.delete();
+
         }catch (Exception ex) {
             LOGGER.error("Error= {} while uploading file to S3.", ex.getMessage());
             // Rollback operation for logical data consistency
@@ -106,6 +106,7 @@ public class AWSServiceImpl implements AWSService {
                     .key(keyToGet)
                     .build();
             dynamoDbClient.deleteItem(deleteReq);
+            LOGGER.info("Rollback is succeeded.");
         } catch (Exception ex) {
             LOGGER.error("Rollback operation failed. Error = {}", ex.getMessage());
         }

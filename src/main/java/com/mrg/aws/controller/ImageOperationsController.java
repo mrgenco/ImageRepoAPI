@@ -32,7 +32,7 @@ public class ImageOperationsController {
 
     // TODO : Search endpoint will be added
 
-
-
+    // DynamoDB Stream enabled Amazon Resource Name (ARN) -> arn:aws:dynamodb:eu-central-1:828166170382:table/mrgtable/stream/2020-11-08T10:30:49.597
+    // ElasticSearch domain : arn:aws:es:eu-central-1:828166170382:domain/mrg-elasticsearch-domain/*
 
 }

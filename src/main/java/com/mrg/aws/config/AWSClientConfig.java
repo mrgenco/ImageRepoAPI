@@ -28,6 +28,7 @@ public class AWSClientConfig {
     public void createCredentials(){
         credentials = AwsBasicCredentials.create(accessKeyId, secretAccessKey);
     }
+
     @Bean
     public S3Client getAmazonS3Client() {
         return S3Client.builder()
@@ -42,4 +43,6 @@ public class AWSClientConfig {
                 .credentialsProvider(StaticCredentialsProvider.create(credentials))
                 .build();
     }
+
+
 }
