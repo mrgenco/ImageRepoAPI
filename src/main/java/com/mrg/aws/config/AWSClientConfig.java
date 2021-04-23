@@ -23,7 +23,6 @@ public class AWSClientConfig {
     private String region;
 
     private AwsCredentials credentials;
-
     @PostConstruct
     public void createCredentials(){
         credentials = AwsBasicCredentials.create(accessKeyId, secretAccessKey);

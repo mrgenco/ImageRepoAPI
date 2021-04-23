@@ -7,6 +7,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.UUID;
+
 @RestController
 @RequestMapping(value= "/image")
 public class ImageOperationsController {
@@ -20,9 +22,10 @@ public class ImageOperationsController {
 
     @PostMapping(value= "/upload")
     public ResponseEntity<String> uploadFile(@RequestPart(value= "image") final MultipartFile multipartFile,
-                                             @RequestPart(value= "description") final String description) {
+                                             @RequestPart(value= "description") final String description,
+                                             @RequestPart(value= "tags") final String tags) {
         try{
-            service.uploadFile(multipartFile, description);
+            service.uploadFile(multipartFile, description, tags);
             final String response = "[" + multipartFile.getOriginalFilename() + "] uploaded successfully.";
             return new ResponseEntity<>(response, HttpStatus.CREATED);
         }catch(Exception ex){
@@ -30,9 +33,15 @@ public class ImageOperationsController {
         }
     }
 
-    // TODO : Search endpoint will be added
+    @GetMapping("/download/{imageId}")
+    public byte[] downloadUserProfileImage(@PathVariable("imageId") UUID imageId) {
+       return service.download(imageId);
+    }
 
-    // DynamoDB Stream enabled Amazon Resource Name (ARN) -> arn:aws:dynamodb:eu-central-1:828166170382:table/mrgtable/stream/2020-11-08T10:30:49.597
-    // ElasticSearch domain : arn:aws:es:eu-central-1:828166170382:domain/mrg-elasticsearch-domain/*
+
+    @GetMapping(value= "/search")
+    public ResponseEntity<String> searchFile(){
+        return new ResponseEntity<>(HttpStatus.FOUND);
+    }
 
 }

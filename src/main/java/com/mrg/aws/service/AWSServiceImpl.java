@@ -8,23 +8,32 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.core.sync.ResponseTransformer;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.*;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Object;
+import software.amazon.awssdk.utils.IoUtils;
+
 import java.io.File;
-import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.UUID;
 
 @Service
 public class AWSServiceImpl implements AWSService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AWSServiceImpl.class);
+
     @Value("${aws.s3.bucket}")
     private String bucketName;
     @Value("${aws.dynamodb.table}")
     private String tableName;
+
     private S3Client s3Client;
     private DynamoDbClient dynamoDbClient;
 
@@ -34,28 +43,49 @@ public class AWSServiceImpl implements AWSService {
         this.dynamoDbClient = dynamoDbClient;
     }
 
+
     @Override
-    @Async
-    public void uploadFile(final MultipartFile multipartFile, final String description) throws Exception {
-        LOGGER.info("File upload in progress.");
-        // Primary key for S3 & DynamoDB records
-        final String uniqueFileId = LocalDateTime.now() + "_" + multipartFile.getOriginalFilename();
-        // DynamoDB operation
-        addFileToDynamoDBTable(uniqueFileId, multipartFile, description);
-        // S3 operation
-        uploadFileToS3Bucket(uniqueFileId, multipartFile);
-        LOGGER.info("File upload is completed successfully.");
+    public byte[] download(UUID uniqueFileId) {
+        try {
+            GetObjectRequest getObjectRequest = GetObjectRequest.builder()
+                    .bucket(bucketName)
+                    .key(uniqueFileId.toString())
+                    .build();
+            ResponseBytes<GetObjectResponse> result = s3Client.getObject(getObjectRequest, ResponseTransformer.toBytes());
+            // to get the bytes
+            return result.asByteArray();
+
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to download file from s3 +["+uniqueFileId+"]", e);
+        }
     }
 
-    private void addFileToDynamoDBTable(String uniqueId, MultipartFile multipartFile, String description) {
+    @Override
+    public void uploadFile(final MultipartFile multipartFile, final String description, final String tags) throws Exception {
+       if(FileUtils.isFileNotEmpty(multipartFile)) {
+            LOGGER.info("File upload in progress.");
+            // Primary key for S3 & DynamoDB records
+            final String uniqueFileId = UUID.randomUUID().toString();
+            // DynamoDB operation
+            addFileToDynamoDBTable(uniqueFileId, multipartFile, description, tags);
+            // S3 operation
+            uploadFileToS3Bucket(uniqueFileId, multipartFile);
+            LOGGER.info("File upload is completed successfully.");
+        }
+    }
+
+
+
+    private void addFileToDynamoDBTable(String uniqueId, MultipartFile multipartFile, String description, String tags) {
         try {
             LOGGER.info("Adding DynamoDB record with name= " + uniqueId);
             HashMap<String, AttributeValue> itemValues = new HashMap<String, AttributeValue>();
-            itemValues.put("id", AttributeValue.builder().s(uniqueId).build());
-            itemValues.put("fileName", AttributeValue.builder().s(multipartFile.getOriginalFilename()).build());
-            itemValues.put("fileType", AttributeValue.builder().s(multipartFile.getContentType()).build());
-            itemValues.put("size", AttributeValue.builder().s(String.valueOf(multipartFile.getSize())).build());
-            itemValues.put("description", AttributeValue.builder().s(description).build());
+            itemValues.put("ImageId", AttributeValue.builder().s(uniqueId).build());
+            itemValues.put("FileName", AttributeValue.builder().s(multipartFile.getOriginalFilename()).build());
+            itemValues.put("FileType", AttributeValue.builder().s(multipartFile.getContentType()).build());
+            itemValues.put("FileSize", AttributeValue.builder().s(String.valueOf(multipartFile.getSize())).build());
+            itemValues.put("Description", AttributeValue.builder().s(description).build());
+            itemValues.put("Tags", AttributeValue.builder().s(tags).build());
             PutItemRequest request = PutItemRequest.builder()
                     .tableName(tableName)
                     .item(itemValues)
@@ -69,9 +99,10 @@ public class AWSServiceImpl implements AWSService {
     }
 
     private void uploadFileToS3Bucket(final String uniqueFileId, final MultipartFile multipartFile) throws Exception {
+
+        LOGGER.info("Uploading file with name= " + uniqueFileId);
+        final File file = FileUtils.convertMultiPartFileToFile(multipartFile);
         try {
-            LOGGER.info("Uploading file with name= " + uniqueFileId);
-            final File file = FileUtils.convertMultiPartFileToFile(multipartFile);
             PutObjectRequest objectRequest = PutObjectRequest.builder()
                     .bucket(bucketName)
                     .key(uniqueFileId)
@@ -84,8 +115,11 @@ public class AWSServiceImpl implements AWSService {
             // Rollback operation for logical data consistency
             rollBackFromDynamoDBTable(uniqueFileId);
             throw ex;
+        }finally {
+            FileUtils.deleteIfExist(file);
         }
     }
+
 
     /*
     * TR : S3 operasyonu başarısız olursa mantıksal veri bütünlüğünü korumak
@@ -96,6 +130,7 @@ public class AWSServiceImpl implements AWSService {
     * */
     private void rollBackFromDynamoDBTable(String uniqueFileId) {
         try {
+
             LOGGER.info("Rollback started for DynamoDB record.");
             HashMap<String, AttributeValue> keyToGet = new HashMap<String, AttributeValue>();
             keyToGet.put("id", AttributeValue.builder()
